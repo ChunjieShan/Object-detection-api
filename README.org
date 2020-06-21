@@ -1,0 +1,183 @@
+* TensorFlow Object Detection API
+** 标记数据
+*** 使用工具: LabelIMG
+**** 安装LabelIMG
+     #+begin_src bash
+     git clone https://github.com/tzutalin/labelImg.git
+     sudo pip3 install -r requirements/requirements-linux-python3.txt
+     make qt5py3
+     python3 labelImg.py
+     python3 labelImg.py [IMAGE_PATH] [PRE-DEFINED CLASS FILE]
+     #+end_src
+**** 使用LabelIMG标记图片.
+***** w: 使用矩形框
+***** C-s: 保存图片
+      
+** 部署TensorFlow Object Detection API环境
+*** 下载依赖库
+    #+begin_src bash
+    sudo apt-get install protobuf-compiler python-pil python-lxml python-tk
+    pip install --user Cython
+    pip install --user contextlib2
+    pip install --user jupyter
+    pip install --user matplotlib
+    pip install --user tf_slim
+    #+end_src
+*** 克隆该仓库
+    #+begin_src bash
+    git clone https://github.com/tensorflow/models.git
+    #+end_src
+*** 下载COCOAPI
+    #+begin_src bash
+    git clone https://github.com/cocodataset/cocoapi.git
+    cd cocoapi/PythonAPI
+    make
+    cp -r pycocotools <path_to_tensorflow>/models/research/
+    #+end_src
+*** 编译Protobuf
+    #+begin_src bash
+    # From tensorflow/models/research/
+    protoc object_detection/protos/*.proto --python_out=.
+    #+end_src
+*** 添加到环境变量
+    #+begin_src bash
+    # From tensorflow/models/research/
+    export PYTHONPATH=$PYTHONPATH:`pwd`:`pwd`/slim
+    source ~/.bashrc
+    #+end_src
+    
+** 创建TFRecords
+*** Grab Datitran的xml_to_csv.py脚本
+    #+begin_src bash
+    wget https://raw.githubusercontent.com/datitran/raccoon_dataset/master/xml_to_csv.py
+    #+end_src
+*** 修改该脚本
+    #+begin_src python
+    def main():
+        for directory in ['train', 'test']:
+            image_path = os.path.join(os.getcwd(), 'images/{}'.format(directory))
+            xml_df = xml_to_csv(image_path)
+            xml_df.to_csv('data/{}_labels.csv'.format(directory), index=None)
+            print('Successfully converted xml to csv.')
+    #+end_src
+*** 运行该脚本
+    #+begin_src bash
+    python3 xml_to_csv.py
+    #+end_src
+*** Grab Datitran的generate_tfrecord.py脚本
+    #+begin_src bash
+    wget https://raw.githubusercontent.com/datitran/raccoon_dataset/master/generate_tfrecord.py
+    #+end_src
+*** 修改该脚本
+    #+begin_src python
+    # 此处以示波器为示例
+    def class_text_to_int(row_label):
+        if row_label == 'oscilloscope':
+            return 1
+        else:
+            None
+    #+end_src
+*** 运行该脚本
+    #+begin_src bash
+    python3 generate_tfrecord.py --csv_input=data/train_labels.csv --output_path=data/train.record --image_dir=Image/
+    python3 generate_tfrecord.py --csv_input=data/test_labels.csv --output_path=data/test.record --image_dir=Image/
+    #+end_src
+*** 至此数据已经准备完毕，目录的树结构应如此
+    #+begin_src bash
+            Object-Detection
+            -data/
+            --test_labels.csv
+            --train_labels.csv
+            --train.record
+            --test.record
+            -Image/
+            --test/
+            ---testingimages.jpg
+            --train/
+            ---testingimages.jpg
+            --...yourimages.jpg
+            -training
+            -xml_to_csv.py
+    #+end_src
+
+** 准备模型和配置文件
+*** 下载模型和配置文件
+    #+begin_src bash
+    wget https://raw.githubusercontent.com/tensorflow/models/master/object_detection/samples/configs/ssd_mobilenet_v1_pets.config
+    http://download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_coco_11_06_2017.tar.gz
+    #+end_src
+*** 修改配置文件为
+    #+begin_src config
+    fine_tune_checkpoint: "ssd_mobilenet_v1_coco_11_06_2017/model.ckpt"
+    from_detection_checkpoint: true
+    data_augmentation_options {
+      random_horizontal_flip {
+      }
+    }
+    data_augmentation_options {
+      ssd_random_crop {
+      }
+    }
+  }
+
+  train_input_reader: {
+    tf_record_input_reader {
+      input_path: "data/train.record"
+    }
+    label_map_path: "data/object-detection.pbtxt"
+  }
+
+  eval_config: {
+    num_examples: 40
+  }
+
+  eval_input_reader: {
+    tf_record_input_reader {
+      input_path: "data/test.record"
+    }
+    label_map_path: "training/object-detection.pbtxt"
+    shuffle: false
+    num_readers: 1
+  }
+    #+end_src
+    其中object-detection.pbtxt内容为
+    #+begin_src pbtxt
+    item {
+      id: 1
+      name: 'Oscilloscope'
+    }
+    #+end_src
+*** 将object-detection下的data/ Image/ training/ ssd_mobilenet_v1_coco_11_06_2017/ ssd_mobilenet_v1_pets.config文件复制粘贴到models/research/object-detection/下
+*** 将legacy/train.py复制粘贴到object-detection目录下，使用如下命令进行训练
+    #+begin_src bash
+    python3 train.py --logtostderr --train_dir=training/ --pipeline_config_path=training/ssd_mobilenet_v1_pets.config
+    #+end_src
+*** 训练完毕后，生成一个frozen inference pb模型 
+    #+begin_src 
+    python3 export_inference_graph.py \
+        --input_type image_tensor \
+        --pipeline_config_path training/ssd_mobilenet_v1_pets.config \
+        --trained_checkpoint_prefix training/model.ckpt-10000 \
+        --output_directory Oscilloscope
+    #+end_src
+*** 修改object_detection.ipynb中的内容
+    #+begin_src python
+      # What model to download.
+      MODEL_NAME = 'Oscilloscope'
+
+      # Path to frozen detection graph. This is the actual model that is used for the object detection.
+      PATH_TO_CKPT = MODEL_NAME + '/frozen_inference_graph.pb'
+
+      # List of the strings that is used to add correct label for each box.
+      PATH_TO_LABELS = os.path.join('training', 'object-detection.pbtxt')
+
+      NUM_CLASSES = 1
+
+      TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, '{}示波器.jpg'.format(i)) for i in range(10, 20) ]
+    #+end_src
+*** Run All即可，观察测试结果
+
+** 踩的坑
+   - 最好用Anaconda搭一个TensorFlow1.x的环境
+   - 我们需要的模型使frozen_inference_graph.pb模型，而不是saved_model.pb(会生成两个模型, 不要选错了)
+   - matplotlib现在的AGG不支持GUI显示图片，应使用IPython.display来显示图片

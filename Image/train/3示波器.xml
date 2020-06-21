@@ -1,0 +1,26 @@
+<annotation>
+	<folder>Image</folder>
+	<filename>3示波器.jpg</filename>
+	<path>/home/rick/Code/Python/TensoFlow/Object-detection/models/research/object_detection/Image/3示波器.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>500</width>
+		<height>375</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>Oscilloscope</name>
+		<pose>Unspecified</pose>
+		<truncated>1</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>7</xmin>
+			<ymin>1</ymin>
+			<xmax>480</xmax>
+			<ymax>332</ymax>
+		</bndbox>
+	</object>
+</annotation>
